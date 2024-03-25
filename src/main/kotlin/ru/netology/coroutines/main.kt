@@ -7,7 +7,9 @@ import okhttp3.*
 import okhttp3.logging.HttpLoggingInterceptor
 import ru.netology.coroutines.dto.Author
 import ru.netology.coroutines.dto.Comment
+import ru.netology.coroutines.dto.CommentWithAuthor
 import ru.netology.coroutines.dto.Post
+import ru.netology.coroutines.dto.PostWithAuthor
 import ru.netology.coroutines.dto.PostWithComments
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -29,22 +31,22 @@ fun main() {
     with(CoroutineScope(EmptyCoroutineContext)) {
         launch {
             try {
-
-
-
                 val posts = getPosts(client)
-                        .map { post ->
-                            val authorDeferred = async {
-                                getAuthor(client, post.authorId)
-                            }
-                            val commentsDeferred = async {
-                                PostWithComments(post, getComments(client, post.id))
-                            }
-                            authorDeferred.await()
-                            commentsDeferred.await()
+                    .map { post ->
+                        val commentsDeferred = async {
+                           getComments(client, post.id).map { comment ->
+                               CommentWithAuthor(comment.id, comment.postId, getAuthor(client, comment.postId), comment.content, comment.published, comment.likedByMe)
+                           }
                         }
-                println(posts)
+                        val postWithAuthorDeferred = async {
+                            PostWithAuthor(post.id, getAuthor(client, post.authorId), post.content, post.published, post.likedByMe)
+                        }
+                        val postWithAuthor = postWithAuthorDeferred.await()
+                        val comments = commentsDeferred.await()
+                        PostWithComments(postWithAuthor, comments)
+                    }
 
+                println(posts)
             } catch (e: Exception) {
                 e.printStackTrace()
             }
@@ -97,9 +99,3 @@ suspend fun getAuthor(client: OkHttpClient, id: Long): Author =
     makeRequest("$BASE_URL/api/slow/authors/$id",
         client,
         object : TypeToken<Author>() {})
-
-suspend fun getPostsAndAuthors(client: OkHttpClient): List<Pair<Post, Author>> {
-    val posts = getPosts(client)
-    val authors = posts.map { post -> getAuthor(client, post.authorId) }
-    return posts.zip(authors)
-}
